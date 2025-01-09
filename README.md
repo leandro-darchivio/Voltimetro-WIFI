@@ -38,3 +38,5 @@ Este proyecto utiliza un ESP8266 para medir la tensión de una batería en tiemp
 4. Selecciona el puerto adecuado en **Herramientas > Puerto**.
 5. Carga el código al ESP8266.
 
+![Descripción de la imagen](Sin%20t%C3%ADtulo.jpg)
+
