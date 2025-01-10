@@ -2,8 +2,8 @@
 #include <ESP8266WebServer.h>
 #include <FS.h>
 
-#define WIFI_SSID "vvvvvvvvvvvvvvvvvvvvO"
-#define WIFI_PASSWORD "vvvvvvvvvvvvvvvvvvvvvvvvvv"
+#define WIFI_SSID "@@@"
+#define WIFI_PASSWORD "987654321"
 
 ESP8266WebServer server(80);
 File dataFile;
@@ -12,14 +12,6 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println("Conectando a WiFi...");
-
-  // Configurar IP estática
-  IPAddress local_IP(192, 168, 0, 196);
-  IPAddress gateway(192, 168, 0, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  if (!WiFi.config(local_IP, gateway, subnet)) {
-    Serial.println("Error al configurar IP estática");
-  }
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -32,29 +24,25 @@ void setup() {
   Serial.print("Dirección IP asignada: ");
   Serial.println(WiFi.localIP());
 
-  // Montar el sistema de archivos SPIFFS
   if (!SPIFFS.begin()) {
     Serial.println("Error al montar SPIFFS");
     return;
   }
 
-  // Eliminar el archivo CSV si existe
   if (SPIFFS.exists("/datos.csv")) {
     SPIFFS.remove("/datos.csv");
     Serial.println("Archivo CSV eliminado.");
   }
 
-  // Crear un nuevo archivo CSV
   dataFile = SPIFFS.open("/datos.csv", "w");
   if (dataFile) {
-    dataFile.println("Tiempo (s);Tension (V)"); 
+    dataFile.println("Tiempo (s);Tension (V);Valor Crudo");
     dataFile.close();
     Serial.println("Nuevo archivo CSV creado.");
   } else {
     Serial.println("Error al crear el archivo de datos");
   }
 
-  // Ruta principal para visualizar el gráfico
   server.on("/", HTTP_GET, []() {
     String html = R"rawliteral(
       <!DOCTYPE html>
@@ -62,7 +50,7 @@ void setup() {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Tensión de batería: </title>
+        <title>Tensión de batería</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
           body {
@@ -88,7 +76,8 @@ void setup() {
         </style>
       </head>
       <body>
-        <h1>Tensión de batería <span id="currentValue">0.00</span> V</h1>
+        <h1>Tensión de batería: <span id="currentValue">0.00</span> V</h1>
+        <h2>Valor Crudo: <span id="rawValue">0</span></h2>
         <canvas id="a0Chart" width="400" height="160"></canvas>
         <a href="/descargar" download="datos.csv"><button>Descargar Datos</button></a>
         <script>
@@ -100,33 +89,27 @@ void setup() {
               datasets: [{
                 label: 'Tensión (V)',
                 data: [],
-                borderColor: 'rgba(255, 0, 0, 1)', // Línea roja
-                backgroundColor: 'rgba(255, 0, 0, 0.2)', // Fondo rojo translúcido
+                borderColor: 'rgba(255, 0, 0, 1)',
+                backgroundColor: 'rgba(255, 0, 0, 0.2)',
                 borderWidth: 1
               }]
             },
             options: {
               scales: {
-                x: { 
+                x: {
                   title: { display: true, text: 'Tiempo [s]' },
-                  grid: {
-                    color: 'rgba(169, 169, 169, 0.7)' // Líneas del grid verticales en gris
-                  }
+                  grid: { color: 'rgba(169, 169, 169, 0.7)' }
                 },
-                y: { 
+                y: {
                   title: { display: true, text: 'Tensión [V]' },
                   suggestedMin: 0,
-                  suggestedMax: 3.3,
-                  grid: {
-                    color: 'rgba(169, 169, 169, 0.7)' // Líneas del grid horizontales en gris
-                  }
+                  suggestedMax: 3.65,
+                  grid: { color: 'rgba(169, 169, 169, 0.7)' }
                 }
               },
               plugins: {
                 legend: {
-                  labels: {
-                    color: '#ffffff' // Color de las leyendas
-                  }
+                  labels: { color: '#ffffff' }
                 }
               }
             }
@@ -143,13 +126,12 @@ void setup() {
                   a0Chart.data.datasets[0].data.shift();
                 }
                 a0Chart.update();
-
-                // Actualizar el valor actual de tensión
                 document.getElementById('currentValue').innerText = data.value.toFixed(2);
+                document.getElementById('rawValue').innerText = data.raw;
               });
           }
 
-          setInterval(fetchData, 1000);
+          setInterval(fetchData, 10000);
         </script>
       </body>
       </html>
@@ -157,31 +139,27 @@ void setup() {
     server.send(200, "text/html", html);
   });
 
-  // Ruta para obtener los datos en tiempo real
   server.on("/data", HTTP_GET, []() {
     static unsigned long lastMillis = 0;
     static int seconds = 0;
 
-    if (millis() - lastMillis >= 1000) {
+    if (millis() - lastMillis >= 10000) {
       lastMillis = millis();
-      int sensorValue = analogRead(A0);
-      float voltage = sensorValue * (3.3 / 1023.0); // Conversión a voltios
-      seconds++;
+      int rawValue = analogRead(A0);
+      float voltage = (rawValue / 289.0) * 3.65;
+      seconds += 10;
 
-      // Guardar el dato en el archivo con ";" como delimitador
       dataFile = SPIFFS.open("/datos.csv", "a");
       if (dataFile) {
-        dataFile.printf("%d;%.2f\n", seconds, voltage); // Usamos ";" como delimitador
+        dataFile.printf("%d;%.2f;%d\n", seconds, voltage, rawValue);
         dataFile.close();
       }
 
-      // Enviar datos al cliente
-      String json = "{\"time\": \"" + String(seconds) + "\", \"value\": " + String(voltage, 2) + "}";
+      String json = "{\"time\": \"" + String(seconds) + "\", \"value\": " + String(voltage, 2) + ", \"raw\": " + String(rawValue) + "}";
       server.send(200, "application/json", json);
     }
   });
 
-  // Ruta para descargar el archivo de datos
   server.on("/descargar", HTTP_GET, []() {
     File file = SPIFFS.open("/datos.csv", "r");
     if (!file) {
