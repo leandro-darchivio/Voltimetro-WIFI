@@ -41,6 +41,7 @@ Este proyecto utiliza un ESP8266 para medir la tensión de una batería en tiemp
 ![Circuito](Sin%20t%C3%ADtulo.jpg)
 
 ![Visualizacion Web](Screenshot.jpg)
+<img src="Screenshot.jpg" alt="Visualizacion Web" width="100" >
 
 
 
